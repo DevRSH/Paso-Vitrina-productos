@@ -10,6 +10,8 @@ const pageNext = document.querySelector('#page-next');
 const pageNumbers = document.querySelector('#page-numbers');
 
 const PAGE_SIZE = 8;
+let productsRequestId = 0;
+let productsController = null;
 
 const state = {
   q: '',
@@ -62,18 +64,30 @@ function formatCount(value) {
   return new Intl.NumberFormat('es-CL').format(value);
 }
 
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>'"]/g, (character) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    "'": '&#39;',
+    '"': '&quot;',
+  }[character]));
+}
+
 function productCard(product) {
+  const productId = escapeHtml(product.id);
+  const productName = escapeHtml(product.name);
   return `
     <article class="product-card">
-      <button class="card-button" type="button" data-product-id="${product.id}" aria-label="Ver detalle de ${product.name}">
+      <button class="card-button" type="button" data-product-id="${productId}" aria-label="Ver detalle de ${productName}">
         <span class="image-wrap">
-          <img src="${product.image}" alt="" />
-          <span class="card-index">#${product.id}</span>
+          <img src="${escapeHtml(product.image)}" alt="" />
+          <span class="card-index">#${productId}</span>
         </span>
         <span class="card-copy">
-          <span class="card-type">${categoryGroup(product.category)}</span>
-          <strong>${product.name}</strong>
-          <span class="card-meta">${product.format} <i>•</i> ${formatPrice(product.price, product.currency)}</span>
+          <span class="card-type">${escapeHtml(categoryGroup(product.category))}</span>
+          <strong>${productName}</strong>
+          <span class="card-meta">${escapeHtml(product.format)} <i>•</i> ${escapeHtml(formatPrice(product.price, product.currency))}</span>
           <span class="view-link">Ver detalle <span aria-hidden="true">→</span></span>
         </span>
       </button>
@@ -83,7 +97,7 @@ function productCard(product) {
 function fillSelect(select, values, placeholder) {
   const current = select.value;
   select.innerHTML = `<option value="">${placeholder}</option>` +
-    values.map((value) => `<option value="${value.replaceAll('"', '&quot;')}">${value}</option>`).join('');
+    values.map((value) => `<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`).join('');
   if (values.includes(current)) select.value = current;
 }
 
@@ -161,8 +175,8 @@ function renderGrid() {
   renderPagination();
 }
 
-async function fetchJSON(url) {
-  const response = await fetch(url);
+async function fetchJSON(url, signal) {
+  const response = await fetch(url, { signal });
   if (!response.ok) {
     throw new Error(`HTTP ${response.status}`);
   }
@@ -170,12 +184,16 @@ async function fetchJSON(url) {
 }
 
 async function loadMeta() {
-  const meta = await fetchJSON('/api/meta');
+  const meta = await fetchJSON('/api/products/filters');
   fillSelect(categoryFilter, meta.categories, 'Todas las categorías');
   fillSelect(formatFilter, meta.formats, 'Todos los formatos');
 }
 
 async function loadProducts() {
+  productsController?.abort();
+  const controller = new AbortController();
+  productsController = controller;
+  const requestId = ++productsRequestId;
   state.loading = true;
   state.error = null;
   renderGrid();
@@ -187,7 +205,8 @@ async function loadProducts() {
   params.set('page', String(state.page));
 
   try {
-    const data = await fetchJSON(`/api/products?${params}`);
+    const data = await fetchJSON(`/api/products?${params}`, controller.signal);
+    if (requestId !== productsRequestId) return;
     state.items = data.items;
     state.total = data.total;
     state.page = data.page;
@@ -195,6 +214,7 @@ async function loadProducts() {
     state.loading = false;
     renderGrid();
   } catch (error) {
+    if (error.name === 'AbortError' || requestId !== productsRequestId) return;
     state.error = error;
     state.items = [];
     state.total = 0;
@@ -219,7 +239,7 @@ function openDetail(product) {
     ['Identificador', product.id],
   ];
   document.querySelector('#detail-list').innerHTML = values
-    .map(([label, value]) => `<div><dt>${label}</dt><dd>${value}</dd></div>`)
+    .map(([label, value]) => `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>`)
     .join('');
 
   document.querySelector('#detail-price').textContent = formatPrice(product.price, product.currency);

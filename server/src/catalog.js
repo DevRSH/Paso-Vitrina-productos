@@ -8,15 +8,17 @@ export function categoryGroup(category) {
 }
 
 function toProduct(row) {
+  const price = Number(row.price);
+  const originalPrice = Number(row.originalPrice);
   return {
     id: String(row.id ?? ''),
     name: row.name ?? '',
     description: row.description ?? '',
     format: row.format ?? '',
     category: row.category ?? '',
-    price: Number(row.price),
+    price: Number.isFinite(price) ? price : 0,
     priceUnit: row.priceUnit ?? '',
-    originalPrice: Number(row.originalPrice),
+    originalPrice: Number.isFinite(originalPrice) ? originalPrice : 0,
     currency: row.currency ?? 'CLP',
     productUrl: row.productUrl ?? '',
     extractedAt: row.extractedAt ?? '',
@@ -62,7 +64,8 @@ export function queryProducts(products, { q = '', category = '', format = '', pa
   const filtered = products.filter((product) => matchesFilters(product, { q, category, format }));
   const total = filtered.length;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  const safePage = Math.min(Math.max(1, page), total === 0 ? 1 : totalPages);
+  const requestedPage = Number.isFinite(Number(page)) ? Math.trunc(Number(page)) : 1;
+  const safePage = Math.min(Math.max(1, requestedPage), total === 0 ? 1 : totalPages);
   const start = (safePage - 1) * PAGE_SIZE;
   const items = filtered.slice(start, start + PAGE_SIZE);
   return {

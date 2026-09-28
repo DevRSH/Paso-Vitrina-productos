@@ -13,6 +13,13 @@ const app = express();
 let products = [];
 let loadError = null;
 
+app.disable('x-powered-by');
+app.use((_req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  next();
+});
+
 try {
   products = await loadCatalog(csvPath);
   console.log(`Catálogo cargado: ${products.length} productos`);
@@ -29,9 +36,19 @@ function requireCatalog(_req, res, next) {
   next();
 }
 
-app.get('/api/meta', requireCatalog, (_req, res) => {
-  res.json(getMeta(products));
+app.get('/api/health', (_req, res) => {
+  res.status(loadError || products.length === 0 ? 503 : 200).json({
+    status: loadError || products.length === 0 ? 'error' : 'ok',
+    products: products.length,
+  });
 });
+
+function sendFilters(_req, res) {
+  res.json(getMeta(products));
+}
+
+app.get('/api/products/filters', requireCatalog, sendFilters);
+app.get('/api/meta', requireCatalog, sendFilters);
 
 app.get('/api/products', requireCatalog, (req, res) => {
   const q = typeof req.query.q === 'string' ? req.query.q : '';
